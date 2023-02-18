@@ -3,6 +3,9 @@ title: "Performance"
 output: 
   flexdashboard::flex_dashboard:
     vertical_layout: fill
+    theme: 
+      version: 4
+      bootswatch: minty
 ---
 
 ```{r, echo = FALSE}
