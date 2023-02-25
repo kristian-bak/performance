@@ -1,26 +1,31 @@
 ---
 title: "Performance"
-output: 
+output:
   flexdashboard::flex_dashboard:
+    orientation: rows
     vertical_layout: fill
-    theme: 
-      version: 4
-      bootswatch: minty
+
+runtime: shiny
 ---
 
 ```{r, echo = FALSE}
 library(magrittr)
 library(readxl)
 library(dplyr)
+library(shiny)
+library(flexdashboard)
+```
+
+```{r, label = "Load ticker database"}
+data <- readxl::read_excel("D:/Aktier/Analyse/Perfomance/index.xlsx")
+```
+
+```{r, label = "Load index"}
+df_stock <- kb.yahoo::load_data(ticker = data$Ticker, from = "2023-01-01", verbose = FALSE)
 ```
 
 
-```{r, echo=FALSE, cache=TRUE}
-
-data <- readxl::read_excel("D:/Aktier/Analyse/Perfomance/index.xlsx")
-
-df_stock <- kb.yahoo::load_data(ticker = data$Ticker, from = "2023-01-01", verbose = FALSE)
-
+```{r, label = "Functions"}
 summarise_return <- function(data) {
   
   data %>% 
@@ -36,12 +41,6 @@ summarise_return <- function(data) {
   
 }
 
-df_summary <- df_stock %>% 
-  dplyr::group_by(Ticker) %>% 
-  summarise_return() %>% 
-  dplyr::left_join(data %>% dplyr::select(-Link, -Correlation), by = "Ticker") %>% 
-  dplyr::arrange(dplyr::desc(Return))
-
 summarise_return_by <- function(data, var) {
   
   data %>% 
@@ -55,144 +54,281 @@ summarise_return_by <- function(data, var) {
   
 }
 
-## Best region
-df_region <- df_summary %>% 
-  summarise_return_by(var = Region)
-
-df_region_1 <- df_region %>% 
-  dplyr::slice(1)
-
-## Best sektor
-df_sector <- df_summary %>% 
-  summarise_return_by(var = Sektor)
-
-df_sector_1 <- df_sector %>% 
-  dplyr::slice(1)
-
-## Growth har v?ret bedst
-df_type <- df_summary %>% 
-  summarise_return_by(var = GrowthVsValue)
-
-df_type_1 <- df_type %>% 
-  dplyr::slice(1)
-
-## Small har v?ret bedst
-df_size <- df_summary %>% 
-  summarise_return_by(var = LargeVsSmall)
-
-df_size_1 <- df_size %>% 
-  dplyr::slice(1)
-
-## Mangler flere aktiv klasser
-df_class <- df_summary %>% 
-  summarise_return_by(var = AktivKlasse)
-
-df_class_1 <- df_class %>% 
-  dplyr::slice(1)
-
-## Bedste investering
-df_best_1 <- df_summary %>% 
-  dplyr::slice(1)
-
-## D?rligste investering
-df_worst_1 <- df_summary %>% 
-  dplyr::slice(dplyr::n())
-
-## Mest risikable aktiv
-df_risky <- df_summary %>% 
-  dplyr::filter(SD == max(SD))
-
-## Mindst risikable aktiv
-df_safe <- df_summary %>% 
-  dplyr::filter(SD == min(SD))
-```
-
-```{r, echo = FALSE}
 add_pct <- function(x) {
   
   paste0(x, " %")
   
 }
+
+get_first_day_in_this_month <- function() {
+  
+  paste0(substring(Sys.Date(), 1, 7), "-01") %>% 
+    as.Date()
+  
+}
+
 ```
 
-
-Overview {data-orientation=rows}
+Overview {data-orientation=rows, data-icon="fa-list-ul"}
 =====
 
-```{r}
-start_time <- as.Date("2023-01-01")
-```
+```{r, label = "Reactive time period stock data"}
 
+shiny::dateRangeInput(
+  inputId = "date_stocks", 
+  label = "Time period", 
+  start = get_first_day_in_this_month(), 
+  end = Sys.Date()
+)
 
-Tidsperiode: ```r start_time ``` -- ```r Sys.Date() ```
-
-Row
------------------------------------------------------------------------  
+react_df_stock_input <- reactive({
   
-### ```r df_region_1$Return %>% add_pct()```
+  df_stock %>% 
+    dplyr::filter(Date >= input$date_stocks[1] & Date <= input$date_stocks[2])
+  
+})
+
+df_summary <- reactive({
+  
+  react_df_stock_input() %>% 
+    dplyr::group_by(Ticker) %>% 
+    summarise_return() %>% 
+    dplyr::left_join(data %>% dplyr::select(-Link, -Correlation), by = "Ticker") %>% 
+    dplyr::arrange(dplyr::desc(Return))
+  
+})
+```
+
+
+```{r, label = "Summarise stats", echo=FALSE, cache=TRUE}
+  ## Best region
+df_region <- reactive({
+  df_summary() %>% 
+    summarise_return_by(var = Region)
+})
+
+df_region_1 <- reactive({
+  
+  df_region() %>% 
+    dplyr::slice(1)
+  
+})
+
+## Best sektor
+df_sector <- reactive({
+  df_summary() %>% 
+    summarise_return_by(var = Sektor)
+})
+
+df_sector_1 <- reactive({
+  df_sector() %>% 
+    dplyr::slice(1)
+})
+
+## Growth har v?ret bedst
+df_type <- reactive({
+  df_summary() %>% 
+    summarise_return_by(var = GrowthVsValue)
+})
+
+df_type_1 <- reactive({
+  df_type() %>% 
+    dplyr::slice(1)
+})
+
+## Small har v?ret bedst
+df_size <- reactive({
+  df_summary() %>% 
+    summarise_return_by(var = LargeVsSmall)
+})
+
+df_size_1 <- reactive({
+  df_size() %>% 
+    dplyr::slice(1)
+})
+
+## Mangler flere aktiv klasser
+df_class <- reactive({
+  df_summary() %>% 
+    summarise_return_by(var = AktivKlasse)
+})
+
+df_class_1 <- reactive({
+  df_class() %>% 
+    dplyr::slice(1)
+})
+
+## Bedste investering
+df_best_1 <- reactive({
+  df_summary() %>% 
+    dplyr::slice(1)
+})
+
+## D?rligste investering
+df_worst_1 <- reactive({
+  df_summary() %>% 
+    dplyr::slice(dplyr::n())
+})
+
+## Mest risikable aktiv
+df_risky <- reactive({
+  df_summary() %>% 
+    dplyr::filter(SD == max(SD))
+})
+
+## Mindst risikable aktiv
+df_safe <- reactive({
+  df_summary() %>% 
+    dplyr::filter(SD == min(SD))
+})
+```
+
+Row 
+-----------------------------------------------------------------------
+
+### 
     
 ```{r}
-flexdashboard::valueBox(value = df_region_1$Region, icon = "fa-globe")
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_region_1()$Region),
+     caption = div(
+         tags$p("Best region"), 
+         tags$h4(paste0("Afkast: ", df_region_1()$Return %>% add_pct()))
+      ),
+     icon = "fa-globe" 
+  )
+  
+})
 ```
+  
+### 
+
+```{r}
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_sector_1()$Sektor),
+     caption = div(
+         tags$p("Best Sector"), 
+         tags$h4(paste0("Afkast: ", df_sector_1()$Return %>% add_pct()))
+      ),
+     icon = "fa-industry" 
+  )
+  
+})
+```
+
+Row
+-----------------------------------------------------------------------  
+
+### 
     
-### ```r df_sector_1$Return %>% add_pct()```
-
 ```{r}
-flexdashboard::valueBox(value = df_sector_1$Sektor, icon = "fa-industry")
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_type_1()$GrowthVsValue),
+     caption = div(
+         tags$p("Growth vs value"), 
+         tags$h4(paste0("Afkast: ", df_type_1()$Return %>% add_pct()))
+      ),
+     icon = "fa-balance-scale" 
+  )
+  
+})
+```
+
+### 
+    
+```{r}
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_size_1()$LargeVsSmall),
+     caption = div(
+         tags$p("Large vs small cap"), 
+         tags$h4(paste0("Afkast: ", df_size_1()$Return %>% add_pct()))
+      ),
+     icon = "fa-search" 
+  )
+  
+})
 ```
 
 Row
 -----------------------------------------------------------------------  
 
-### ```r df_type_1$Return %>% add_pct()```
-
+### 
+    
 ```{r}
-flexdashboard::valueBox(value = df_type_1$GrowthVsValue, icon = "fa-balance-scale")
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_best_1()$Investering),
+     caption = div(
+         tags$p("Best investment"), 
+         tags$h4(paste0("Afkast: ", df_best_1()$Return %>% add_pct()))
+      ),
+     icon = "fa-diamond" 
+  )
+  
+})
 ```
 
-### ```r df_size_1$Return %>% add_pct()```
-
+### 
+    
 ```{r}
-flexdashboard::valueBox(value = df_size_1$LargeVsSmall, icon = "fa-search")
-```
-
-Row
------------------------------------------------------------------------  
-
-### ```r df_class_1$Return %>% add_pct()```
-
-```{r}
-flexdashboard::valueBox(value = df_class_1$AktivKlasse, icon = "fa-line-chart")
-```
-
-### ```r df_best_1$Return %>% add_pct()```
-
-```{r}
-flexdashboard::valueBox(value = df_best_1$Investering, icon = "fa-diamond")
-```
-
-Row
------------------------------------------------------------------------  
-
-### ```r df_worst_1$Return %>% add_pct()```
-
-```{r}
-flexdashboard::valueBox(value = df_worst_1$Investering, icon = "fa-thumbs-down")
-```
-
-### ```r df_risky$SD %>% add_pct()```
-
-```{r}
-flexdashboard::valueBox(value = df_risky$Investering, icon = "fa-bomb")
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_worst_1()$Investering),
+     caption = div(
+         tags$p("Worst investment"), 
+         tags$h4(paste0("Afkast: ", df_worst_1()$Return %>% add_pct()))
+      ),
+     icon = "fa-thumbs-down" 
+  )
+  
+})
 ```
 
 Row
 -----------------------------------------------------------------------  
 
-### ```r df_safe$SD %>% add_pct()```
-
+### 
+    
 ```{r}
-flexdashboard::valueBox(value = df_safe$Investering, icon = "fa-shield")
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_safe()$Investering),
+     caption = div(
+         tags$p("Mindst risikoable investering"), 
+         tags$h4(paste0("Risiko: ", df_safe()$SD %>% add_pct()))
+      ),
+     icon = "fa-shield" 
+  )
+  
+})
+```
+
+### 
+    
+```{r}
+flexdashboard::renderValueBox({
+  
+  valueBox(
+    value = tags$p(df_risky()$Investering),
+     caption = div(
+         tags$p("Mest risikoable investering"), 
+         tags$h4(paste0("Risiko: ", df_risky()$SD %>% add_pct()))
+      ),
+     icon = "fa-bomb" 
+  )
+  
+})
 ```
 
 Details {data-orientation=rows}
@@ -204,13 +340,13 @@ Row
 ### Region
 
 ```{r}
-DT::datatable(df_region, options = list(dom = "t"))
+DT::renderDataTable(DT::datatable(df_region(), options = list(dom = "t")))
 ```
 
 ### Sector
 
 ```{r}
-DT::datatable(df_sector, options = list(dom = "t"))
+DT::renderDataTable(DT::datatable(df_sector(), options = list(dom = "t")))
 ```
 
 Row
@@ -219,13 +355,13 @@ Row
 ### Type
 
 ```{r}
-DT::datatable(df_type, options = list(dom = "t"))
+DT::renderDataTable(DT::datatable(df_type(), options = list(dom = "t")))
 ```
 
 ### Large vs Small cap
 
 ```{r}
-DT::datatable(df_size, options = list(dom = "t"))
+DT::renderDataTable(DT::datatable(df_size(), options = list(dom = "t")))
 ```
 
 World Index {data-orientation=rows}
@@ -237,4 +373,3 @@ df_stock %>%
   dplyr::filter(Ticker == "SPYI.DE") %>% 
   plotly::plot_ly(x = ~Date, y = ~ChangeSinceStart, type = "scatter", mode = "lines")
 ```
-
